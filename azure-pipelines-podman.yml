@@ -1,0 +1,227 @@
+# azure-pipelines-podman.yml
+# NixOS Self-Hosted Agent running AS the 'podman' user (rootless Podman)
+#
+# Key assumption:
+#   The ADO agent service runs under a dedicated 'podman' OS user account.
+#   That user owns the rootless Podman socket and has subuid/subgid ranges.
+#   No sudo is needed anywhere in this pipeline.
+#
+# Execution graph:
+#   Preflight --> Build --> Test --> Push (skipped if REGISTRY='') --> Cleanup
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  name: 'NixOS-Agent-Pool'
+
+variables:
+  IMAGE_NAME:     'myapp'
+  IMAGE_TAG:      '$(Build.BuildNumber)'
+  CONTAINER_NAME: 'myapp-test'
+  REGISTRY:       ''          # set to e.g. docker.io/myorg to enable push
+  DOCKERFILE:     'Dockerfile'
+
+
+# ------------------------------------------------------------------------------
+# STAGE 1: Preflight
+# ------------------------------------------------------------------------------
+stages:
+- stage: Preflight
+  displayName: 'Stage 1 - Preflight'
+  jobs:
+    - job: HealthCheck
+      displayName: 'Agent + Podman Health'
+      timeoutInMinutes: 5
+      steps:
+
+        - script: |
+            echo "=== Running as user ==="
+            whoami && id
+
+            echo "=== Podman version ==="
+            podman --version
+
+            echo "=== Rootless confirm ==="
+            podman info --format '{{.Host.Security.Rootless}}'
+
+            echo "=== XDG_RUNTIME_DIR ==="
+            echo "${XDG_RUNTIME_DIR}"
+            ls "${XDG_RUNTIME_DIR}/podman/podman.sock" 2>/dev/null \
+              && echo "Socket OK" \
+              || echo "WARNING: socket not found - ensure linger is enabled"
+
+            echo "=== subuid/subgid ==="
+            grep "$(whoami)" /etc/subuid /etc/subgid
+
+            echo "=== Podman system df ==="
+            podman system df
+          displayName: 'Podman & Identity Check'
+
+        - script: |
+            podman run --rm alpine:latest echo "Rootless smoke test OK"
+          displayName: 'Smoke Test'
+
+
+# ------------------------------------------------------------------------------
+# STAGE 2: Build
+# ------------------------------------------------------------------------------
+- stage: Build
+  displayName: 'Stage 2 - Build'
+  dependsOn: Preflight
+  jobs:
+    - job: BuildImage
+      displayName: 'podman build'
+      timeoutInMinutes: 20
+      steps:
+
+        - script: |
+            # Demo Dockerfile - remove this step if your repo has one
+            cat > Dockerfile <<'DOCKERFILE'
+            FROM alpine:latest
+            RUN apk add --no-cache bash curl
+            WORKDIR /app
+            COPY . .
+            RUN echo "built at $(date -u)" > /app/build-info.txt
+            CMD ["bash", "-c", "cat /app/build-info.txt"]
+            DOCKERFILE
+          displayName: 'Write demo Dockerfile'
+
+        - script: |
+            echo "=== Build ==="
+            podman build \
+              --tag  "$(IMAGE_NAME):$(IMAGE_TAG)" \
+              --tag  "$(IMAGE_NAME):latest" \
+              --file "$(DOCKERFILE)" \
+              --label "ado.build=$(Build.BuildNumber)" \
+              --label "ado.commit=$(Build.SourceVersion)" \
+              --label "ado.branch=$(Build.SourceBranchName)" \
+              .
+
+            echo "=== Images ==="
+            podman images "$(IMAGE_NAME)"
+
+            echo "=== Inspect ==="
+            podman inspect "$(IMAGE_NAME):$(IMAGE_TAG)" \
+              --format 'ID={{.Id}} Size={{.Size}}'
+          displayName: 'podman build + inspect'
+
+
+# ------------------------------------------------------------------------------
+# STAGE 3: Test
+# ------------------------------------------------------------------------------
+- stage: Test
+  displayName: 'Stage 3 - Test'
+  dependsOn: Build
+  jobs:
+    - job: RunTest
+      displayName: 'Run + Validate Container'
+      timeoutInMinutes: 15
+      steps:
+
+        - script: |
+            echo "=== One-shot run ==="
+            podman run --rm \
+              --name "$(CONTAINER_NAME)-smoke" \
+              "$(IMAGE_NAME):$(IMAGE_TAG)"
+          displayName: 'Smoke run'
+
+        - script: |
+            echo "=== Detached run ==="
+            podman run -d \
+              --name "$(CONTAINER_NAME)" \
+              "$(IMAGE_NAME):$(IMAGE_TAG)" \
+              sleep 60
+
+            echo "=== Status ==="
+            podman ps --filter "name=$(CONTAINER_NAME)"
+
+            echo "=== Exec ==="
+            podman exec "$(CONTAINER_NAME)" bash -c "
+              echo 'Inside container'
+              cat /app/build-info.txt
+            "
+
+            echo "=== Logs ==="
+            podman logs "$(CONTAINER_NAME)"
+
+            echo "=== Cleanup ==="
+            podman stop "$(CONTAINER_NAME)"
+            podman rm   "$(CONTAINER_NAME)"
+          displayName: 'Detached run + exec'
+
+        - script: |
+            echo "=== Export image tar ==="
+            mkdir -p build
+            podman save \
+              --output "build/$(IMAGE_NAME)-$(IMAGE_TAG).tar" \
+              "$(IMAGE_NAME):$(IMAGE_TAG)"
+            ls -lh build/
+          displayName: 'Export tar artifact'
+
+        - task: PublishBuildArtifacts@1
+          inputs:
+            pathToPublish: 'build'
+            artifactName:  'container-image'
+          displayName: 'Publish tar artifact'
+
+
+# ------------------------------------------------------------------------------
+# STAGE 4: Push (skipped when REGISTRY is empty)
+# ------------------------------------------------------------------------------
+- stage: Push
+  displayName: 'Stage 4 - Push'
+  dependsOn: Test
+  condition: and(succeeded(), ne(variables['REGISTRY'], ''))
+  jobs:
+    - job: PushImage
+      displayName: 'Push to Registry'
+      timeoutInMinutes: 15
+      steps:
+
+        - script: |
+            echo "$(REGISTRY_PASSWORD)" | \
+              podman login "$(REGISTRY)" \
+                --username "$(REGISTRY_USER)" \
+                --password-stdin
+          displayName: 'Registry login'
+          env:
+            REGISTRY_PASSWORD: $(REGISTRY_PASSWORD)
+
+        - script: |
+            podman tag "$(IMAGE_NAME):$(IMAGE_TAG)" "$(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
+            podman tag "$(IMAGE_NAME):latest"       "$(REGISTRY)/$(IMAGE_NAME):latest"
+            podman push "$(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
+            podman push "$(REGISTRY)/$(IMAGE_NAME):latest"
+          displayName: 'podman push'
+
+        - script: |
+            podman logout "$(REGISTRY)" || true
+          displayName: 'Registry logout'
+
+
+# ------------------------------------------------------------------------------
+# STAGE 5: Cleanup (always runs)
+# ------------------------------------------------------------------------------
+- stage: Cleanup
+  displayName: 'Stage 5 - Cleanup'
+  dependsOn:
+    - Push
+    - Test
+  condition: always()
+  jobs:
+    - job: Prune
+      displayName: 'Prune Podman'
+      timeoutInMinutes: 10
+      steps:
+
+        - script: |
+            podman rmi "$(IMAGE_NAME):$(IMAGE_TAG)" || true
+            podman rmi "$(IMAGE_NAME):latest"       || true
+            podman image     prune --force
+            podman container prune --force
+            echo "=== After cleanup ==="
+            podman system df
+          displayName: 'podman prune'
