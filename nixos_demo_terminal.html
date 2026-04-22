@@ -1,0 +1,335 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.ide{font-family:var(--font-mono);font-size:12.5px;background:#1a1b1e;border-radius:var(--border-radius-lg);border:0.5px solid #333;overflow:hidden;color:#cdd6f4}
+.titlebar{background:#13141a;padding:0;display:flex;align-items:stretch;border-bottom:0.5px solid #2a2b33;height:36px}
+.tb-dots{display:flex;align-items:center;gap:6px;padding:0 14px;border-right:0.5px solid #2a2b33}
+.dot-r{width:11px;height:11px;border-radius:50%;background:#ff5f57}
+.dot-y{width:11px;height:11px;border-radius:50%;background:#febc2e}
+.dot-g{width:11px;height:11px;border-radius:50%;background:#28c840}
+.tabs-bar{display:flex;align-items:stretch;flex:1;overflow:hidden}
+.ttab{padding:0 16px;font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:7px;color:#888;border-right:0.5px solid #2a2b33;white-space:nowrap;transition:background .12s}
+.ttab.active{background:#1a1b1e;color:#cdd6f4}
+.ttab:hover:not(.active){background:#1e1f25}
+.ttab-dot{width:6px;height:6px;border-radius:50%;background:#444}
+.ttab.active .ttab-dot{background:#6c7086}
+.sidebar{display:flex}
+.file-tree{width:170px;background:#13141a;border-right:0.5px solid #2a2b33;padding:8px 0;flex-shrink:0}
+.ft-head{font-size:10px;color:#555;padding:4px 12px 6px;letter-spacing:.08em;text-transform:uppercase}
+.ft-item{padding:3px 12px;font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:6px;color:#888;transition:background .1s;border-radius:0}
+.ft-item:hover{background:#1e1f25;color:#cdd6f4}
+.ft-item.active{background:#1e1f25;color:#89b4fa}
+.ft-icon{font-size:11px;opacity:.7}
+.ft-indent{padding-left:24px}
+.main-area{flex:1;display:flex;flex-direction:column;min-width:0}
+.editor-area{padding:14px 16px;line-height:1.7;min-height:220px;overflow:auto}
+.terminal-area{border-top:0.5px solid #2a2b33}
+.term-bar{background:#13141a;padding:4px 12px;font-size:10.5px;color:#555;display:flex;align-items:center;gap:8px;border-bottom:0.5px solid #2a2b33}
+.term-bar span{color:#888}
+.term-body{padding:10px 14px;line-height:1.75;min-height:130px;max-height:220px;overflow-y:auto}
+.term-body::-webkit-scrollbar{width:4px}
+.term-body::-webkit-scrollbar-thumb{background:#333}
+.prompt{color:#89b4fa}
+.prompt-sym{color:#a6e3a1}
+.out{color:#cdd6f4}
+.out-dim{color:#6c7086}
+.out-green{color:#a6e3a1}
+.out-amber{color:#f9e2af}
+.out-red{color:#f38ba8}
+.out-blue{color:#89b4fa}
+.out-teal{color:#94e2d5}
+.out-purple{color:#cba6f7}
+.kw{color:#cba6f7}
+.str{color:#a6e3a1}
+.num{color:#fab387}
+.cm{color:#585b70}
+.fn{color:#89b4fa}
+.attr{color:#89dceb}
+.bool{color:#f9e2af}
+.bottom-bar{background:#185fa5;padding:2px 12px;font-size:10.5px;color:#b3d1f7;display:flex;align-items:center;gap:16px}
+.bb-item{display:flex;align-items:center;gap:4px}
+.run-btn{font-size:11px;padding:3px 10px;border:0.5px solid #555;border-radius:4px;background:#1e1f25;color:#a6e3a1;cursor:pointer;transition:background .12s;font-family:var(--font-mono)}
+.run-btn:hover{background:#252630}
+.action-row{display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px 10px;border-top:0.5px solid #2a2b33}
+.cursor{display:inline-block;width:8px;height:13px;background:#cdd6f4;vertical-align:middle;animation:blink 1s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+</style>
+
+<h2 style="position:absolute;left:-9999px">NixOS demo cheatsheet in IDE terminal view</h2>
+
+<div class="ide">
+  <div class="titlebar">
+    <div class="tb-dots">
+      <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+    </div>
+    <div class="tabs-bar">
+      <div class="ttab active" onclick="switchTab('config')" id="ttab-config"><div class="ttab-dot"></div>configuration.nix</div>
+      <div class="ttab" onclick="switchTab('flake')" id="ttab-flake"><div class="ttab-dot"></div>flake.nix</div>
+      <div class="ttab" onclick="switchTab('compose')" id="ttab-compose"><div class="ttab-dot"></div>compose.yaml</div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="file-tree">
+      <div class="ft-head">nixos-demo</div>
+      <div class="ft-item active" onclick="switchTab('config');selectFile(this)" id="fi-config"><span class="ft-icon">N</span>configuration.nix</div>
+      <div class="ft-item" onclick="switchTab('flake');selectFile(this)" id="fi-flake"><span class="ft-icon">F</span>flake.nix</div>
+      <div class="ft-item" onclick="switchTab('compose');selectFile(this)" id="fi-compose"><span class="ft-icon">D</span>compose.yaml</div>
+      <div class="ft-item ft-indent" style="margin-top:6px"><span class="ft-icon">L</span>flake.lock</div>
+      <div class="ft-item ft-indent"><span class="ft-icon">T</span>Taskfile.yml</div>
+      <div class="ft-head" style="margin-top:8px">demo commands</div>
+      <div class="ft-item" onclick="loadDemo('rollback')"><span class="ft-icon">1</span>rollback demo</div>
+      <div class="ft-item" onclick="loadDemo('nix-shell')"><span class="ft-icon">2</span>nix shell</div>
+      <div class="ft-item" onclick="loadDemo('store')"><span class="ft-icon">3</span>store + closure</div>
+      <div class="ft-item" onclick="loadDemo('flake-cmds')"><span class="ft-icon">4</span>flake commands</div>
+      <div class="ft-item" onclick="loadDemo('podman')"><span class="ft-icon">5</span>podman agent</div>
+    </div>
+
+    <div class="main-area">
+      <div class="editor-area" id="editor-area">
+        <div id="tab-config"><span class="cm"># /etc/nixos/configuration.nix</span>
+<span class="cm"># The entire system declared in one file.</span>
+
+<span class="attr">{ config, pkgs, ... }</span>:
+
+{
+  <span class="attr">imports</span> = [ ./hardware-configuration.nix ];
+
+  <span class="cm"># Bootloader — keeps all generations</span>
+  <span class="attr">boot.loader.systemd-boot.enable</span> = <span class="bool">true</span>;
+  <span class="attr">boot.loader.efi.canTouchEfiVariables</span> = <span class="bool">true</span>;
+
+  <span class="cm"># Networking</span>
+  <span class="attr">networking.hostName</span> = <span class="str">"scb-ado-agent-01"</span>;
+  <span class="attr">networking.firewall.allowedTCPPorts</span> = [ <span class="num">22</span> <span class="num">80</span> <span class="num">443</span> ];
+
+  <span class="cm"># Rootless Podman user</span>
+  <span class="attr">users.users.podman</span> = {
+    <span class="attr">isNormalUser</span> = <span class="bool">true</span>;
+    <span class="attr">extraGroups</span> = [ <span class="str">"podman"</span> ];
+    <span class="attr">linger</span> = <span class="bool">true</span>;
+    <span class="attr">subUidRanges</span> = [{ <span class="attr">startUid</span> = <span class="num">100000</span>; <span class="attr">count</span> = <span class="num">65536</span>; }];
+    <span class="attr">subGidRanges</span> = [{ <span class="attr">startGid</span> = <span class="num">100000</span>; <span class="attr">count</span> = <span class="num">65536</span>; }];
+  };
+
+  <span class="cm"># Virtualisation</span>
+  <span class="attr">virtualisation.podman.enable</span> = <span class="bool">true</span>;
+  <span class="attr">virtualisation.podman.dockerCompat</span> = <span class="bool">true</span>;
+
+  <span class="cm"># System packages</span>
+  <span class="attr">environment.systemPackages</span> = <span class="kw">with</span> pkgs; [
+    go-task git curl jq podman-compose
+    azure-cli vscode-fhs
+  ];
+
+  <span class="attr">system.stateVersion</span> = <span class="str">"24.11"</span>;
+}</div>
+
+        <div id="tab-flake" style="display:none"><span class="cm"># flake.nix — lockfile for your entire OS</span>
+
+{
+  <span class="attr">description</span> = <span class="str">"SCB NixOS ADO Agent"</span>;
+
+  <span class="attr">inputs</span> = {
+    <span class="attr">nixpkgs.url</span> = <span class="str">"github:NixOS/nixpkgs/nixos-24.11"</span>;
+    <span class="attr">nixpkgs-unstable.url</span> = <span class="str">"github:NixOS/nixpkgs/nixos-unstable"</span>;
+  };
+
+  <span class="attr">outputs</span> = { self, nixpkgs, ... }@inputs: {
+    <span class="attr">nixosConfigurations</span>.<span class="fn">scb-ado-agent-01</span> =
+      nixpkgs.lib.<span class="fn">nixosSystem</span> {
+        <span class="attr">system</span> = <span class="str">"x86_64-linux"</span>;
+        <span class="attr">modules</span> = [
+          ./configuration.nix
+          <span class="cm"># Add modules here — all composable</span>
+        ];
+      };
+  };
+}</div>
+
+        <div id="tab-compose" style="display:none"><span class="cm"># compose.yaml — image refs hard-coded (no .env)</span>
+<span class="cm"># Run rootless: podman-compose up -d</span>
+
+<span class="attr">services</span>:
+  <span class="attr">app</span>:
+    <span class="attr">image</span>: <span class="str">registry.scb.internal/myapp:1.4.2</span>
+    <span class="attr">restart</span>: <span class="str">unless-stopped</span>
+    <span class="attr">ports</span>:
+      - <span class="str">"8080:8080"</span>
+    <span class="attr">environment</span>:
+      <span class="attr">APP_ENV</span>: <span class="str">staging</span>
+    <span class="attr">networks</span>:
+      - <span class="str">internal</span>
+
+  <span class="attr">nginx</span>:
+    <span class="attr">image</span>: <span class="str">registry.scb.internal/nginx:1.25</span>
+    <span class="attr">ports</span>:
+      - <span class="str">"80:80"</span>
+    <span class="attr">depends_on</span>:
+      - <span class="str">app</span>
+    <span class="attr">networks</span>:
+      - <span class="str">internal</span>
+
+<span class="attr">networks</span>:
+  <span class="attr">internal</span>:
+    <span class="attr">driver</span>: <span class="str">bridge</span></div>
+      </div>
+
+      <div class="terminal-area">
+        <div class="term-bar">
+          <span>TERMINAL</span>
+          <span style="margin-left:auto;color:#444">podman@scb-ado-agent-01 ~</span>
+        </div>
+        <div class="term-body" id="term-body">
+          <div><span class="out-dim">  Select a demo command from the sidebar, or run one below.</span></div>
+          <div style="margin-top:6px"><span class="prompt">podman</span><span class="out-dim">@scb-ado-agent-01</span> <span class="prompt-sym">~$</span> <span class="cursor"></span></div>
+        </div>
+        <div class="action-row" id="action-row">
+          <button class="run-btn" onclick="loadDemo('rollback')">1  rollback</button>
+          <button class="run-btn" onclick="loadDemo('nix-shell')">2  nix shell</button>
+          <button class="run-btn" onclick="loadDemo('store')">3  store</button>
+          <button class="run-btn" onclick="loadDemo('flake-cmds')">4  flakes</button>
+          <button class="run-btn" onclick="loadDemo('podman')">5  podman agent</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <div class="bb-item">NixOS 24.11</div>
+    <div class="bb-item" style="margin-left:auto">x86_64-linux</div>
+    <div class="bb-item">podman 5.x</div>
+    <div class="bb-item">ADO agent: online</div>
+  </div>
+</div>
+
+<script>
+const demos = {
+  rollback: [
+    {t:'prompt', text:'sudo nixos-rebuild switch'},
+    {t:'out', text:'building the system configuration...', cls:'out-dim'},
+    {t:'out', text:'activating the configuration...', cls:'out-green'},
+    {t:'out', text:'setting up /etc...', cls:'out-green'},
+    {t:'out', text:'[ ok ] switched to generation 14', cls:'out-green'},
+    {t:'spacer'},
+    {t:'prompt', text:'nix-env --list-generations'},
+    {t:'out', text:'  12   2025-04-10  (previous)', cls:'out-dim'},
+    {t:'out', text:'  13   2025-04-18', cls:'out-dim'},
+    {t:'out', text:'  14   2025-04-22  (current)', cls:'out-amber'},
+    {t:'spacer'},
+    {t:'prompt', text:'sudo nixos-rebuild switch --rollback'},
+    {t:'out', text:'switching to generation 13...', cls:'out-amber'},
+    {t:'out', text:'[ ok ] rollback complete in 4s', cls:'out-green'},
+    {t:'comment', text:'  entire OS rolled back — no runbook needed'},
+  ],
+  'nix-shell': [
+    {t:'prompt', text:'which python3'},
+    {t:'out', text:'python3 not found', cls:'out-red'},
+    {t:'spacer'},
+    {t:'prompt', text:'nix shell nixpkgs#python3'},
+    {t:'out', text:'fetching /nix/store/3q5b...-python3-3.11.9', cls:'out-dim'},
+    {t:'spacer'},
+    {t:'prompt', text:'which python3'},
+    {t:'out', text:'/nix/store/3q5b...-python3-3.11.9/bin/python3', cls:'out-green'},
+    {t:'spacer'},
+    {t:'prompt', text:'python3 --version'},
+    {t:'out', text:'Python 3.11.9', cls:'out-teal'},
+    {t:'spacer'},
+    {t:'prompt', text:'exit'},
+    {t:'spacer'},
+    {t:'prompt', text:'which python3'},
+    {t:'out', text:'python3 not found', cls:'out-red'},
+    {t:'comment', text:'  ephemeral — zero pollution to the base system'},
+  ],
+  store: [
+    {t:'prompt', text:'nix path-info --recursive nixpkgs#nodejs | head -6'},
+    {t:'out', text:'/nix/store/0abc...-libc-2.38', cls:'out-dim'},
+    {t:'out', text:'/nix/store/1def...-openssl-3.1.4', cls:'out-teal'},
+    {t:'out', text:'/nix/store/2ghi...-zlib-1.3', cls:'out-dim'},
+    {t:'out', text:'/nix/store/3jkl...-icu4c-73', cls:'out-dim'},
+    {t:'out', text:'/nix/store/9xyz...-nodejs-18.20.2', cls:'out-green'},
+    {t:'spacer'},
+    {t:'prompt', text:'du -sh /nix/store'},
+    {t:'out', text:'14G    /nix/store', cls:'out-amber'},
+    {t:'spacer'},
+    {t:'prompt', text:'nix why-depends . nixpkgs#openssl'},
+    {t:'out', text:'/nix/store/9xyz...-nodejs depends on openssl', cls:'out-blue'},
+    {t:'comment', text:'  full dep graph, every hash auditable — supply chain story'},
+  ],
+  'flake-cmds': [
+    {t:'prompt', text:'nix flake show'},
+    {t:'out', text:'github:NixOS/nixpkgs/nixos-24.11', cls:'out-purple'},
+    {t:'out', text:'└─ nixosConfigurations', cls:'out-dim'},
+    {t:'out', text:'   └─ scb-ado-agent-01  (x86_64-linux)', cls:'out-green'},
+    {t:'spacer'},
+    {t:'prompt', text:'nix flake metadata'},
+    {t:'out', text:'Resolved URL: github:NixOS/nixpkgs/nixos-24.11', cls:'out-dim'},
+    {t:'out', text:'Locked URL:   github:NixOS/nixpkgs/abc123def...', cls:'out-teal'},
+    {t:'out', text:'Last modified: 2025-04-20', cls:'out-dim'},
+    {t:'spacer'},
+    {t:'prompt', text:'cat flake.lock | python3 -c "import sys,json; d=json.load(sys.stdin); print(list(d[\'nodes\'].keys()))"'},
+    {t:'out', text:"['root', 'nixpkgs', 'nixpkgs-unstable']", cls:'out-amber'},
+    {t:'comment', text:'  every input pinned by hash — commit this = reproducible OS'},
+  ],
+  podman: [
+    {t:'prompt', text:'systemctl --user status podman-compose@launchpad'},
+    {t:'out', text:'  podman-compose@launchpad.service - Podman Launchpad', cls:'out-dim'},
+    {t:'out', text:'   Active: active (running)', cls:'out-green'},
+    {t:'out', text:'   since Tue 2025-04-22 09:41:02 IST', cls:'out-dim'},
+    {t:'spacer'},
+    {t:'prompt', text:'podman ps'},
+    {t:'out', text:'CONTAINER ID  IMAGE                          STATUS', cls:'out-dim'},
+    {t:'out', text:'a1b2c3d4e5f6  registry.scb.internal/myapp    Up 2 hours', cls:'out-green'},
+    {t:'out', text:'f6e5d4c3b2a1  registry.scb.internal/nginx    Up 2 hours', cls:'out-green'},
+    {t:'spacer'},
+    {t:'prompt', text:'id'},
+    {t:'out', text:'uid=1001(podman) gid=1001(podman) groups=1001(podman)', cls:'out-amber'},
+    {t:'comment', text:'  no root — containers isolated via user namespaces'},
+  ],
+};
+
+function switchTab(name) {
+  ['config','flake','compose'].forEach(t => {
+    document.getElementById('tab-'+t).style.display = t===name?'':'none';
+    document.getElementById('ttab-'+t).classList.toggle('active', t===name);
+  });
+}
+
+function selectFile(el) {
+  document.querySelectorAll('.ft-item').forEach(f => f.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function loadDemo(name) {
+  const steps = demos[name];
+  if (!steps) return;
+  const body = document.getElementById('term-body');
+  body.innerHTML = '';
+  let i = 0;
+  function next() {
+    if (i >= steps.length) {
+      const last = document.createElement('div');
+      last.style.marginTop = '4px';
+      last.innerHTML = '<span class="prompt">podman</span><span class="out-dim">@scb-ado-agent-01</span> <span class="prompt-sym">~$</span> <span class="cursor"></span>';
+      body.appendChild(last);
+      body.scrollTop = body.scrollHeight;
+      return;
+    }
+    const s = steps[i++];
+    const div = document.createElement('div');
+    if (s.t === 'prompt') {
+      div.innerHTML = '<span class="prompt">podman</span><span class="out-dim">@scb-ado-agent-01</span> <span class="prompt-sym">~$</span> <span class="out">' + s.text + '</span>';
+    } else if (s.t === 'out') {
+      div.innerHTML = '<span class="' + (s.cls||'out') + '">' + s.text + '</span>';
+    } else if (s.t === 'comment') {
+      div.innerHTML = '<span class="out-dim" style="font-style:italic">' + s.text + '</span>';
+    } else if (s.t === 'spacer') {
+      div.innerHTML = '&nbsp;';
+    }
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+    setTimeout(next, s.t==='prompt' ? 280 : s.t==='spacer' ? 80 : 120);
+  }
+  next();
+}
+</script>
